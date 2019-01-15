@@ -92,38 +92,38 @@ def process_args():
     )
     file_options = parser.add_mutually_exclusive_group()
     file_options.add_argument(
-        '--to-file',
+        '--to_file',
         default=None,
         help="Save load balancer details to local file. "
              "Does not create it in Octavia."
     )
     file_options.add_argument(
-        '--from-file',
+        '--from_file',
         default=None,
         help="Read load balancer details from local file. "
              "Create in Octavia."
     )
     parser.add_argument(
         '-p', '--project_name',
-        required=False,
+        required=False if OS_PROJECT_NAME else True,
         help='Project ID or name. When not specified, '
              'will read it from environment variable: OS_PROJECT_NAME.'
     )
     parser.add_argument(
         '-u', '--username',
-        required=False,
+        required=False if OS_USERNAME else True,
         help='Username ID or name. When not specified, '
              'will read it from environment variable: OS_USERNAME.'
     )
     parser.add_argument(
         '-pa', '--password',
-        required=False,
+        required=False if OS_PASSWORD else True,
         help='Password ID or name. When not specified, '
              'will read it from environment variable: OS_PASSWORD.'
     )
     parser.add_argument(
         '-a', '--auth_url',
-        required=False,
+        required=False if OS_AUTH_URL else True,
         help='Auth URL. When not specified, '
              'will read it from environment variable: OS_AUTH_URL.'
     )
@@ -132,43 +132,35 @@ def process_args():
     return parser.parse_args()
 
 
-# def _remove_empty_str_values(lb_tree_dict):
-#     for key, val in lb_tree_dict.items():
-#         if isinstance(key, dict):
-#             item = _remove_empty_str_values(key)
-#             if item is '':
-#                 key.pop()
-#                 return item
+def _remove_empty(lb_dict):
+    """
+    Removes keys from dictionary and sub dictionaries if they value is an empty
+    string.
+    :param lb_dict: dict
+    """
+    for key, val in lb_dict.items():
+        if isinstance(val, dict):
+            return _remove_empty(val)
+        if val is '' or val is u'':
+            # if val in ['', u'']:
+            lb_dict.pop(key)
 
 
-# def _finditem(obj, key):
-#     for k, v in obj.items():
-#         if isinstance(v, dict):
-#             item = _finditem(v, key)
-#             if item is not None:
-#                 return item
-
-
-def _remove_item(obj, key):
-    for k, v in obj.items():
-        if isinstance(v, dict):
-            return _remove_item(v, key)
-        if obj.get(key) is '':
-            obj.pop(key)
-
-
-def build_octavia_lb_tree(nlbaas_lb_details, nlbaas_lb_tree, reuse_vip=True):
+def build_octavia_lb_tree(nlbaas_lb_details, lb_statuses_tree,
+                          reuse_vip=False):
     nlbaas_lb_details = nlbaas_lb_details['loadbalancer']
+    nlbaas_lb_tree = lb_statuses_tree['statuses']['loadbalancer']
+
     octavia_lb_listeners = []
     octavia_lb_pools = []
-    import pdb ; pdb.set_trace()
 
-    # # WIP
+    # WIP!
     # for listener in nlbaas_lb_tree['listeners']:
     #     pass
 
+    # for pool in nlbaas_lb_tree['pools']:
+    #     pass
 
-    # TODO(nmagnezi): handle empty values.
     octavia_lb_tree = {
         "loadbalancer": {
             "description": nlbaas_lb_details['description'],
@@ -182,6 +174,7 @@ def build_octavia_lb_tree(nlbaas_lb_details, nlbaas_lb_tree, reuse_vip=True):
             if reuse_vip else ""
         }
     }
+    _remove_empty(octavia_lb_tree)
     return octavia_lb_tree
 
 
@@ -192,11 +185,12 @@ def main():
     # Collect all the data about the neutron-lbaas based load balancer
     lb_statuses_tree = os_clients.neutronclient.retrieve_loadbalancer_status(
         loadbalancer=args.lb_id)
-    lb_tree = lb_statuses_tree['statuses']['loadbalancer']
     lb_details = os_clients.neutronclient.show_loadbalancer(args.lb_id)
 
-    octavia_lb_tree = build_octavia_lb_tree(lb_details, lb_tree)
-    # import pdb ; pdb.set_trace()
+    # Build an Octavia API load balancer tree
+    octavia_lb_tree = build_octavia_lb_tree(lb_details, lb_statuses_tree)
+
+    import pdb ; pdb.set_trace()
     os_clients.octaviaclient.load_balancer_create(json=octavia_lb_tree)
 
 
