@@ -167,6 +167,7 @@ def build_octavia_lb_tree(nlbaas_lb_details, lb_statuses_tree, reuse_vip):
 
     octavia_lb_tree = {
         "loadbalancer": {
+            "name": nlbaas_lb_details['name'],
             "description": nlbaas_lb_details['description'],
             "admin_state_up": nlbaas_lb_details['admin_state_up'],
             "project_id": nlbaas_lb_details['tenant_id'],
