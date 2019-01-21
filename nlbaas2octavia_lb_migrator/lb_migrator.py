@@ -13,6 +13,7 @@
 #    under the License.
 
 import argparse
+import json
 from os import environ
 
 from keystoneclient.v3 import client as keystoneclient
@@ -93,13 +94,13 @@ def process_args():
     file_options = parser.add_mutually_exclusive_group()
     file_options.add_argument(
         '--to_file',
-        default=None,
+        action='store_true',
         help="Save load balancer details to local file. "
              "Does not create it in Octavia."
     )
     file_options.add_argument(
         '--from_file',
-        default=None,
+        action='store_true',
         help="Read load balancer details from local file. "
              "Create in Octavia."
     )
@@ -141,8 +142,7 @@ def _remove_empty(lb_dict):
     for key, val in lb_dict.items():
         if isinstance(val, dict):
             return _remove_empty(val)
-        if val is '' or val is u'':
-            # if val in ['', u'']:
+        if val in ['', u'']:
             lb_dict.pop(key)
 
 
@@ -181,17 +181,41 @@ def build_octavia_lb_tree(nlbaas_lb_details, lb_statuses_tree,
 def main():
     args = process_args()
     os_clients = OpenStackClients()
+    lb_details_file = ''.join([args.lb_id, '_details', '.json'])
+    lb_statuses_tree_file = ''.join([args.lb_id, '_tree', '.json'])
 
-    # Collect all the data about the neutron-lbaas based load balancer
-    lb_statuses_tree = os_clients.neutronclient.retrieve_loadbalancer_status(
-        loadbalancer=args.lb_id)
-    lb_details = os_clients.neutronclient.show_loadbalancer(args.lb_id)
+    # Collect all the data about the Neutron-LBaaS based load balancer.
 
-    # Build an Octavia API load balancer tree
-    octavia_lb_tree = build_octavia_lb_tree(lb_details, lb_statuses_tree)
+    if args.from_file:
+        # Read load balancer data from a local JSON file.
+        with open(lb_details_file) as f:
+            lb_details = json.load(f)
+        with open(lb_statuses_tree_file) as f:
+            lb_statuses_tree = json.load(f)
 
-    import pdb ; pdb.set_trace()
-    os_clients.octaviaclient.load_balancer_create(json=octavia_lb_tree)
+    else:
+        # Get load balancer from OpenStack Neutron API.
+        lb_statuses_tree = (
+            os_clients.neutronclient.retrieve_loadbalancer_status(
+                loadbalancer=args.lb_id)
+        )
+        lb_details = os_clients.neutronclient.show_loadbalancer(args.lb_id)
+
+    # Either backup all the data about the Neutron-LBaaS based load balancer to
+    # to a file or directly create it in Octavia.
+
+    if args.to_file:
+        # Backup to a JSON file.
+        with open(lb_details_file, 'w') as f:
+            json.dump(lb_details, f, sort_keys=True, indent=4)
+        with open(lb_statuses_tree_file, 'w') as f:
+            json.dump(lb_statuses_tree, f, sort_keys=True, indent=4)
+
+    else:
+        # Build an Octavia load balancer tree and create it.
+        # import pdb ; pdb.set_trace()
+        octavia_lb_tree = build_octavia_lb_tree(lb_details, lb_statuses_tree)
+        os_clients.octaviaclient.load_balancer_create(json=octavia_lb_tree)
 
 
 if __name__ == '__main__':
