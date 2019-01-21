@@ -91,6 +91,13 @@ def process_args():
         help='Load balancer ID. '
              'When no --to/from file specified, will create it in Octavia.'
     )
+    parser.add_argument(
+        '-v', '--reuse_vip',
+        default=False,
+        action='store_true',
+        help='When specified, use the same Load balancer VIP address. Should'
+             'only be used when the source load balancer is already gone.'
+    )
     file_options = parser.add_mutually_exclusive_group()
     file_options.add_argument(
         '--to_file',
@@ -128,8 +135,6 @@ def process_args():
         help='Auth URL. When not specified, '
              'will read it from environment variable: OS_AUTH_URL.'
     )
-
-
     return parser.parse_args()
 
 
@@ -146,8 +151,7 @@ def _remove_empty(lb_dict):
             lb_dict.pop(key)
 
 
-def build_octavia_lb_tree(nlbaas_lb_details, lb_statuses_tree,
-                          reuse_vip=False):
+def build_octavia_lb_tree(nlbaas_lb_details, lb_statuses_tree, reuse_vip):
     nlbaas_lb_details = nlbaas_lb_details['loadbalancer']
     nlbaas_lb_tree = lb_statuses_tree['statuses']['loadbalancer']
 
@@ -213,8 +217,9 @@ def main():
 
     else:
         # Build an Octavia load balancer tree and create it.
-        # import pdb ; pdb.set_trace()
-        octavia_lb_tree = build_octavia_lb_tree(lb_details, lb_statuses_tree)
+        octavia_lb_tree = build_octavia_lb_tree(lb_details,
+                                                lb_statuses_tree,
+                                                args.reuse_vip)
         os_clients.octaviaclient.load_balancer_create(json=octavia_lb_tree)
 
 
