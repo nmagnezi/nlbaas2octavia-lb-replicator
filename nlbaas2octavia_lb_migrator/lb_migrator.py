@@ -29,57 +29,6 @@ OS_PROJECT_DOMAIN_NAME = environ.get('OS_PROJECT_DOMAIN_NAME') or 'Default'
 OS_USER_DOMAIN_NAME = environ.get('OS_USER_DOMAIN_NAME') or 'Default'
 
 
-class OpenStackClients(object):
-
-    def __init__(self, project_name=None, username=None, password=None,
-                 auth_url=None, project_domain_name=None,
-                 user_domain_name=None):
-
-        # Handle user-feed data vs environment variables.
-        if not project_name:
-            project_name = OS_PROJECT_NAME
-        if not username:
-            username = OS_USERNAME
-        if not password:
-            password = OS_PASSWORD
-        if not auth_url:
-            auth_url = OS_AUTH_URL
-        if not project_domain_name:
-            project_domain_name = OS_PROJECT_DOMAIN_NAME
-        if not user_domain_name:
-            user_domain_name = OS_USER_DOMAIN_NAME
-
-        self.keystone_credentials = {
-            'username': username,
-            'password': password,
-            'project_name': project_name,
-            'auth_url': auth_url,
-            'project_domain_name': project_domain_name,
-            'user_domain_name': user_domain_name
-        }
-        self._keystone_session = self.get_keystone_session()
-        self.octaviaclient = self.get_octaviaclient()
-        self.neutronclient = self.get_neutronclient()
-
-    def get_keystone_session(self):
-        from keystoneauth1 import loading
-        from keystoneauth1 import session
-        loader = loading.get_plugin_loader('password')
-        auth = loader.load_from_options(**self.keystone_credentials)
-        return session.Session(auth=auth, verify=False)
-
-    def get_octaviaclient(self):
-        keystone = keystoneclient.Client(session=self._keystone_session)
-        service_id = keystone.services.list(name='octavia')[0].id
-        octavia_endpoint = keystone.endpoints.list(service=service_id,
-                                                   interface='public')[0].url
-        return octaviaclient.OctaviaAPI(session=self._keystone_session,
-                                        endpoint=octavia_endpoint)
-
-    def get_neutronclient(self):
-        return neutronclient.Client(session=self._keystone_session)
-
-
 def process_args():
 
     parser = argparse.ArgumentParser(
@@ -151,77 +100,235 @@ def _remove_empty(lb_dict):
             lb_dict.pop(key)
 
 
-def build_octavia_lb_tree(nlbaas_lb_details, lb_statuses_tree, reuse_vip):
-    nlbaas_lb_details = nlbaas_lb_details['loadbalancer']
-    nlbaas_lb_tree = lb_statuses_tree['statuses']['loadbalancer']
+class OpenStackClients(object):
 
-    octavia_lb_listeners = []
-    octavia_lb_pools = []
+    def __init__(self, project_name=None, username=None, password=None,
+                 auth_url=None, project_domain_name=None,
+                 user_domain_name=None):
 
-    # WIP!
-    # for listener in nlbaas_lb_tree['listeners']:
-    #     pass
+        # Handle user-feed data vs environment variables.
+        if not project_name:
+            project_name = OS_PROJECT_NAME
+        if not username:
+            username = OS_USERNAME
+        if not password:
+            password = OS_PASSWORD
+        if not auth_url:
+            auth_url = OS_AUTH_URL
+        if not project_domain_name:
+            project_domain_name = OS_PROJECT_DOMAIN_NAME
+        if not user_domain_name:
+            user_domain_name = OS_USER_DOMAIN_NAME
 
-    # for pool in nlbaas_lb_tree['pools']:
-    #     pass
-
-    octavia_lb_tree = {
-        "loadbalancer": {
-            "name": nlbaas_lb_details['name'],
-            "description": nlbaas_lb_details['description'],
-            "admin_state_up": nlbaas_lb_details['admin_state_up'],
-            "project_id": nlbaas_lb_details['tenant_id'],
-            "flavor_id": "",
-            "listeners": octavia_lb_listeners,
-            "pools": octavia_lb_pools,
-            "vip_subnet_id": nlbaas_lb_details['vip_subnet_id'],
-            "vip_address": nlbaas_lb_details['vip_address']
-            if reuse_vip else ""
+        self.keystone_credentials = {
+            'username': username,
+            'password': password,
+            'project_name': project_name,
+            'auth_url': auth_url,
+            'project_domain_name': project_domain_name,
+            'user_domain_name': user_domain_name
         }
-    }
-    _remove_empty(octavia_lb_tree)
-    return octavia_lb_tree
+        self._keystone_session = self.get_keystone_session()
+        self.octaviaclient = self.get_octaviaclient()
+        self.neutronclient = self.get_neutronclient()
+
+    def get_keystone_session(self):
+        from keystoneauth1 import loading
+        from keystoneauth1 import session
+        loader = loading.get_plugin_loader('password')
+        auth = loader.load_from_options(**self.keystone_credentials)
+        return session.Session(auth=auth, verify=False)
+
+    def get_octaviaclient(self):
+        keystone = keystoneclient.Client(session=self._keystone_session)
+        service_id = keystone.services.list(name='octavia')[0].id
+        octavia_endpoint = keystone.endpoints.list(service=service_id,
+                                                   interface='public')[0].url
+        return octaviaclient.OctaviaAPI(session=self._keystone_session,
+                                        endpoint=octavia_endpoint)
+
+    def get_neutronclient(self):
+        return neutronclient.Client(session=self._keystone_session)
+
+
+class LbMigrator(object):
+
+    def __init__(self, lb_id):
+        self.os_clients = OpenStackClients()
+        self.lb_id = lb_id
+        self.lb_tree = {}
+        self.lb_details = {}
+        self.lb_listeners = {}
+        self.lb_pools = {}
+        self.lb_healthmonitors = {}
+        self.lb_members = {}
+
+    def _pools_deep_scan(self, pools_list):
+        for pool in pools_list:
+            pool_id = pool['id']
+            lb_pool = self.os_clients.neutronclient.show_lbaas_pool(pool_id)
+            self.lb_pools[pool_id] = lb_pool
+            if pool.get('healthmonitor'):
+                # Health monitor is optional
+                healthmonitor_id = pool['healthmonitor']['id']
+                lb_healthmonitor = (
+                    self.os_clients.neutronclient.
+                    show_health_monitor(healthmonitor_id)
+                )
+                self.lb_healthmonitors[healthmonitor_id] = lb_healthmonitor
+            for member in pool['members']:
+                member_id = member['id']
+                lb_member = (
+                    self.os_clients.neutronclient.
+                    show_lbaas_member(member_id, pool_id)
+                )
+                self.lb_members[member_id] = lb_member
+
+    def collect_lb_info_from_api(self):
+        self.lb_tree = (
+            self.os_clients.neutronclient.retrieve_loadbalancer_status(
+                loadbalancer=self.lb_id)
+        )
+        self.lb_details = self.os_clients.neutronclient.show_loadbalancer(
+            self.lb_id)
+
+        # Scan lb_tree and retrive all objects to backup all the info
+        # that tree is missing out. The Octavia lb tree contain more details.
+        for listener in (
+                self.lb_tree['statuses']['loadbalancer']['listeners']):
+            listener_id = listener['id']
+            lb_listener = (
+                self.os_clients.neutronclient.show_listener(listener_id)
+                           )
+            self.lb_listeners[listener_id] = lb_listener
+            self._pools_deep_scan(listener['pools'])
+
+        self._pools_deep_scan(
+            self.lb_tree['statuses']['loadbalancer']['pools'])
+
+    def write_lb_data_file(self, filename):
+        lb_data = {
+            'lb_id': self.lb_id,
+            'lb_tree': self.lb_tree,
+            'lb_details': self.lb_details,
+            'lb_listeners': self.lb_listeners,
+            'lb_pools': self.lb_pools,
+            'lb_healthmonitors': self.lb_healthmonitors,
+            'lb_members': self.lb_members
+        }
+        with open(filename, 'w') as f:
+            json.dump(lb_data, f, sort_keys=True, indent=4)
+
+    def read_lb_data_file(self, filename):
+        # Read load balancer data from a local JSON file.
+        with open(filename) as f:
+            lb_data = json.load(f)
+        try:
+            if self.lb_id == lb_data['lb_id']:
+                self.lb_tree = lb_data['lb_tree']
+                self.lb_details = lb_data['lb_details']
+                self.lb_listeners = lb_data['lb_listeners']
+                self.lb_pools = lb_data['lb_pools']
+                self.lb_healthmonitors = lb_data['lb_healthmonitors']
+                self.lb_members = lb_data['lb_members']
+        except ValueError:
+            print('The file content does not match the lb_id you specified')
+
+    def build_octavia_lb_tree(self, reuse_vip):
+        nlbaas_lb_details = self.lb_details['loadbalancer']
+        nlbaas_lb_tree = self.lb_tree['statuses']['loadbalancer']
+
+        octavia_lb_listeners = []
+        octavia_lb_pools = []
+
+        for listener in nlbaas_lb_tree['listeners']:
+            listener_id = listener['id']
+            nlbaas_listener_data = self.lb_listeners[listener_id]['listener']
+
+            pool_id = nlbaas_listener_data['default_pool_id']
+            nlbaas_default_pool_data = self.lb_pools[pool_id]['pool']
+
+            if nlbaas_default_pool_data.get('healthmonitor_id'):
+                healthmonitor_id = nlbaas_default_pool_data['healthmonitor_id']
+                healthmonitor_data = self.lb_healthmonitors[healthmonitor_id]
+                octavia_hm = {
+                    'type': healthmonitor_data.get('type'),
+                    'delay': healthmonitor_data.get('delay'),
+                    'expected_codes': healthmonitor_data.get('expected_codes'),
+                    'http_method': healthmonitor_data.get('http_method'),
+                    'max_retries': healthmonitor_data.get('max_retries'),
+                    'timeout': healthmonitor_data.get('timeout'),
+                    'url_path': healthmonitor_data.get('url_path')
+                }
+            else:
+                octavia_hm = None
+
+            octavia_listener = {
+                'name': nlbaas_listener_data['name'],
+                'protocol': nlbaas_listener_data['protocol'],
+                'protocol_port': nlbaas_listener_data['protocol_port'],
+                'default_pool': {
+                    'name': nlbaas_default_pool_data['name'],
+                    'protocol': nlbaas_default_pool_data['protocol'],
+                    'lb_algorithm': nlbaas_default_pool_data['lb_algorithm'],
+                    'healthmonitor': octavia_hm,
+                    'members': {}
+
+                },
+            }
+            octavia_lb_listeners.append(octavia_listener)
+
+        # WIP
+        # for pool in nlbaas_lb_tree['pools']:
+        #     pass
+
+        octavia_lb_tree = {
+            'loadbalancer': {
+                'name': nlbaas_lb_details['name'],
+                'description': nlbaas_lb_details['description'],
+                'admin_state_up': nlbaas_lb_details['admin_state_up'],
+                'project_id': nlbaas_lb_details['tenant_id'],
+                'flavor_id': '',
+                'listeners': octavia_lb_listeners,
+                'pools': octavia_lb_pools,
+                'vip_subnet_id': nlbaas_lb_details['vip_subnet_id'],
+                'vip_address': nlbaas_lb_details['vip_address']
+                if reuse_vip else ''
+            }
+        }
+        _remove_empty(octavia_lb_tree)
+        return octavia_lb_tree
+
+    def octavia_load_balancer_create(self, reuse_vip):
+        octavia_lb_tree = self.build_octavia_lb_tree(reuse_vip)
+        self.os_clients.octaviaclient.load_balancer_create(
+            json=octavia_lb_tree)
 
 
 def main():
+
     args = process_args()
-    os_clients = OpenStackClients()
-    lb_details_file = ''.join([args.lb_id, '_details', '.json'])
-    lb_statuses_tree_file = ''.join([args.lb_id, '_tree', '.json'])
+    lb_data_filename = ''.join([args.lb_id, '_data', '.json'])
+    lb_migrator = LbMigrator(args.lb_id)
 
     # Collect all the data about the Neutron-LBaaS based load balancer.
 
     if args.from_file:
-        # Read load balancer data from a local JSON file.
-        with open(lb_details_file) as f:
-            lb_details = json.load(f)
-        with open(lb_statuses_tree_file) as f:
-            lb_statuses_tree = json.load(f)
-
+        lb_migrator.read_lb_data_file(lb_data_filename)
     else:
         # Get load balancer from OpenStack Neutron API.
-        lb_statuses_tree = (
-            os_clients.neutronclient.retrieve_loadbalancer_status(
-                loadbalancer=args.lb_id)
-        )
-        lb_details = os_clients.neutronclient.show_loadbalancer(args.lb_id)
+        lb_migrator.collect_lb_info_from_api()
 
     # Either backup all the data about the Neutron-LBaaS based load balancer to
     # to a file or directly create it in Octavia.
 
     if args.to_file:
         # Backup to a JSON file.
-        with open(lb_details_file, 'w') as f:
-            json.dump(lb_details, f, sort_keys=True, indent=4)
-        with open(lb_statuses_tree_file, 'w') as f:
-            json.dump(lb_statuses_tree, f, sort_keys=True, indent=4)
+        lb_migrator.write_lb_data_file(lb_data_filename)
 
     else:
         # Build an Octavia load balancer tree and create it.
-        octavia_lb_tree = build_octavia_lb_tree(lb_details,
-                                                lb_statuses_tree,
-                                                args.reuse_vip)
-        os_clients.octaviaclient.load_balancer_create(json=octavia_lb_tree)
+        lb_migrator.octavia_load_balancer_create(args.reuse_vip)
 
 
 if __name__ == '__main__':
