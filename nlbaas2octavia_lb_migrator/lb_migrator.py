@@ -75,8 +75,8 @@ def process_args():
 
 def _remove_empty(lb_dict):
     """
-    Removes keys from dictionary and sub dictionaries if they value is an empty
-    string.
+    Removes keys from dictionary and sub objs such as dictionaries and list of
+    dictionaries, if they value is an empty string.
     :param lb_dict: dict
     """
     for key, val in lb_dict.items():
@@ -252,6 +252,7 @@ class LbMigrator(object):
             octavia_member = {
                 'admin_state_up': member_data['admin_state_up'],
                 'name': member_data['name'],
+                'address': member_data['address'],
                 'protocol_port': member_data['protocol_port'],
                 'subnet_id': member_data['subnet_id'],
                 'weight': member_data['weight']
@@ -267,8 +268,6 @@ class LbMigrator(object):
             nlbaas_listener_data = self.lb_listeners[listener_id]['listener']
 
             pool_id = nlbaas_listener_data['default_pool_id']
-            octavia_hm = self._build_healthmonitor_obj(pool_id)
-            octavia_lb_members = self._build_members_list(pool_id)
             nlbaas_default_pool_data = self.lb_pools[pool_id]['pool']
 
             octavia_listener = {
@@ -279,8 +278,9 @@ class LbMigrator(object):
                     'name': nlbaas_default_pool_data['name'],
                     'protocol': nlbaas_default_pool_data['protocol'],
                     'lb_algorithm': nlbaas_default_pool_data['lb_algorithm'],
-                    'healthmonitor': octavia_hm or '',
-                    'members': octavia_lb_members
+                    'healthmonitor':
+                        self._build_healthmonitor_obj(pool_id) or '',
+                    'members': self._build_members_list(pool_id) or ''
                 }
             }
             octavia_lb_listeners.append(octavia_listener)
@@ -288,12 +288,20 @@ class LbMigrator(object):
 
     def _build_pools_list(self):
         nlbaas_lb_tree = self.lb_tree['statuses']['loadbalancer']
-        import pdb ; pdb.set_trace()
+        octavia_lb_pools = []
         for pool in nlbaas_lb_tree['pools']:
             pool_id = pool['id']
+            nlbaas_pool_data = self.lb_pools[pool_id]['pool']
 
-        octavia_lb_pools = []
-
+            octavia_pool = {
+                'name': nlbaas_pool_data['name'],
+                'description': nlbaas_pool_data['description'],
+                'protocol': nlbaas_pool_data['protocol'],
+                'lb_algorithm': nlbaas_pool_data['lb_algorithm'],
+                'healthmonitor': self._build_healthmonitor_obj(pool_id) or '',
+                'members': self._build_members_list(pool_id) or ''
+             }
+            octavia_lb_pools.append(octavia_pool)
         return octavia_lb_pools
 
 
@@ -319,7 +327,6 @@ class LbMigrator(object):
 
     def octavia_load_balancer_create(self, reuse_vip):
         octavia_lb_tree = self.build_octavia_lb_tree(reuse_vip)
-        import pdb ; pdb.set_trace()
         self.os_clients.octaviaclient.load_balancer_create(
             json=octavia_lb_tree)
 
