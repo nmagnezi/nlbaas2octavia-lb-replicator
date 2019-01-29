@@ -1,17 +1,3 @@
-# Copyright 2019 Nir Magnezi
-#
-#    Licensed under the Apache License, Version 2.0 (the "License"); you may
-#    not use this file except in compliance with the License. You may obtain
-#    a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-#    License for the specific language governing permissions and limitations
-#    under the License.
-
 import argparse
 import json
 from os import environ
@@ -95,7 +81,11 @@ def _remove_empty(lb_dict):
     """
     for key, val in lb_dict.items():
         if isinstance(val, dict):
-            return _remove_empty(val)
+            _remove_empty(val)
+        if isinstance(val, list):
+            for x in val:
+                if isinstance(x, dict):
+                    _remove_empty(x)
         if val in ['', u'']:
             lb_dict.pop(key)
 
@@ -234,34 +224,52 @@ class LbMigrator(object):
         except ValueError:
             print('The file content does not match the lb_id you specified')
 
-    def build_octavia_lb_tree(self, reuse_vip):
-        nlbaas_lb_details = self.lb_details['loadbalancer']
+    def _build_healthmonitor_obj(self, pool_id):
+        nlbaas_pool_data = self.lb_pools[pool_id]['pool']
+        octavia_hm = None
+
+        if nlbaas_pool_data.get('healthmonitor_id'):
+            healthmonitor_id = nlbaas_pool_data['healthmonitor_id']
+            healthmonitor_data = self.lb_healthmonitors[healthmonitor_id]
+            octavia_hm = {
+                'type': healthmonitor_data.get('type'),
+                'delay': healthmonitor_data.get('delay'),
+                'expected_codes': healthmonitor_data.get('expected_codes'),
+                'http_method': healthmonitor_data.get('http_method'),
+                'max_retries': healthmonitor_data.get('max_retries'),
+                'timeout': healthmonitor_data.get('timeout'),
+                'url_path': healthmonitor_data.get('url_path')
+            }
+        return octavia_hm
+
+    def _build_members_list(self, pool_id):
+        nlbaas_pool_data = self.lb_pools[pool_id]['pool']
+        octavia_lb_members = []
+
+        for member in nlbaas_pool_data['members']:
+            member_id = member['id']
+            member_data = self.lb_members[member_id]['member']
+            octavia_member = {
+                'admin_state_up': member_data['admin_state_up'],
+                'name': member_data['name'],
+                'protocol_port': member_data['protocol_port'],
+                'subnet_id': member_data['subnet_id'],
+                'weight': member_data['weight']
+            }
+            octavia_lb_members.append(octavia_member)
+        return octavia_lb_members
+
+    def _build_listeners_list(self):
         nlbaas_lb_tree = self.lb_tree['statuses']['loadbalancer']
-
         octavia_lb_listeners = []
-        octavia_lb_pools = []
-
         for listener in nlbaas_lb_tree['listeners']:
             listener_id = listener['id']
             nlbaas_listener_data = self.lb_listeners[listener_id]['listener']
 
             pool_id = nlbaas_listener_data['default_pool_id']
+            octavia_hm = self._build_healthmonitor_obj(pool_id)
+            octavia_lb_members = self._build_members_list(pool_id)
             nlbaas_default_pool_data = self.lb_pools[pool_id]['pool']
-
-            if nlbaas_default_pool_data.get('healthmonitor_id'):
-                healthmonitor_id = nlbaas_default_pool_data['healthmonitor_id']
-                healthmonitor_data = self.lb_healthmonitors[healthmonitor_id]
-                octavia_hm = {
-                    'type': healthmonitor_data.get('type'),
-                    'delay': healthmonitor_data.get('delay'),
-                    'expected_codes': healthmonitor_data.get('expected_codes'),
-                    'http_method': healthmonitor_data.get('http_method'),
-                    'max_retries': healthmonitor_data.get('max_retries'),
-                    'timeout': healthmonitor_data.get('timeout'),
-                    'url_path': healthmonitor_data.get('url_path')
-                }
-            else:
-                octavia_hm = None
 
             octavia_listener = {
                 'name': nlbaas_listener_data['name'],
@@ -271,16 +279,26 @@ class LbMigrator(object):
                     'name': nlbaas_default_pool_data['name'],
                     'protocol': nlbaas_default_pool_data['protocol'],
                     'lb_algorithm': nlbaas_default_pool_data['lb_algorithm'],
-                    'healthmonitor': octavia_hm,
-                    'members': {}
-
-                },
+                    'healthmonitor': octavia_hm or '',
+                    'members': octavia_lb_members
+                }
             }
             octavia_lb_listeners.append(octavia_listener)
+        return octavia_lb_listeners
 
-        # WIP
-        # for pool in nlbaas_lb_tree['pools']:
-        #     pass
+    def _build_pools_list(self):
+        nlbaas_lb_tree = self.lb_tree['statuses']['loadbalancer']
+        import pdb ; pdb.set_trace()
+        for pool in nlbaas_lb_tree['pools']:
+            pool_id = pool['id']
+
+        octavia_lb_pools = []
+
+        return octavia_lb_pools
+
+
+    def build_octavia_lb_tree(self, reuse_vip):
+        nlbaas_lb_details = self.lb_details['loadbalancer']
 
         octavia_lb_tree = {
             'loadbalancer': {
@@ -289,8 +307,8 @@ class LbMigrator(object):
                 'admin_state_up': nlbaas_lb_details['admin_state_up'],
                 'project_id': nlbaas_lb_details['tenant_id'],
                 'flavor_id': '',
-                'listeners': octavia_lb_listeners,
-                'pools': octavia_lb_pools,
+                'listeners': self._build_listeners_list(),
+                'pools': self._build_pools_list(),
                 'vip_subnet_id': nlbaas_lb_details['vip_subnet_id'],
                 'vip_address': nlbaas_lb_details['vip_address']
                 if reuse_vip else ''
@@ -301,6 +319,7 @@ class LbMigrator(object):
 
     def octavia_load_balancer_create(self, reuse_vip):
         octavia_lb_tree = self.build_octavia_lb_tree(reuse_vip)
+        import pdb ; pdb.set_trace()
         self.os_clients.octaviaclient.load_balancer_create(
             json=octavia_lb_tree)
 
