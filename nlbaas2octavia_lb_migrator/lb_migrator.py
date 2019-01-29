@@ -150,6 +150,7 @@ class LbMigrator(object):
         self.lb_details = {}
         self.lb_listeners = {}
         self.lb_pools = {}
+        self.lb_def_pool_id = ''
         self.lb_healthmonitors = {}
         self.lb_members = {}
 
@@ -267,8 +268,8 @@ class LbMigrator(object):
             listener_id = listener['id']
             nlbaas_listener_data = self.lb_listeners[listener_id]['listener']
 
-            pool_id = nlbaas_listener_data['default_pool_id']
-            nlbaas_default_pool_data = self.lb_pools[pool_id]['pool']
+            self.lb_def_pool_id = nlbaas_listener_data['default_pool_id']
+            nlbaas_default_pool_data = self.lb_pools[self.lb_def_pool_id]['pool']
 
             octavia_listener = {
                 'name': nlbaas_listener_data['name'],
@@ -279,8 +280,10 @@ class LbMigrator(object):
                     'protocol': nlbaas_default_pool_data['protocol'],
                     'lb_algorithm': nlbaas_default_pool_data['lb_algorithm'],
                     'healthmonitor':
-                        self._build_healthmonitor_obj(pool_id) or '',
-                    'members': self._build_members_list(pool_id) or ''
+                        self._build_healthmonitor_obj(
+                            self.lb_def_pool_id) or '',
+                    'members': self._build_members_list(
+                        self.lb_def_pool_id) or ''
                 }
             }
             octavia_lb_listeners.append(octavia_listener)
@@ -291,17 +294,21 @@ class LbMigrator(object):
         octavia_lb_pools = []
         for pool in nlbaas_lb_tree['pools']:
             pool_id = pool['id']
-            nlbaas_pool_data = self.lb_pools[pool_id]['pool']
+            if pool_id == self.lb_def_pool_id:
+                continue
+            else:
+                nlbaas_pool_data = self.lb_pools[pool_id]['pool']
 
-            octavia_pool = {
-                'name': nlbaas_pool_data['name'],
-                'description': nlbaas_pool_data['description'],
-                'protocol': nlbaas_pool_data['protocol'],
-                'lb_algorithm': nlbaas_pool_data['lb_algorithm'],
-                'healthmonitor': self._build_healthmonitor_obj(pool_id) or '',
-                'members': self._build_members_list(pool_id) or ''
-             }
-            octavia_lb_pools.append(octavia_pool)
+                octavia_pool = {
+                    'name': nlbaas_pool_data['name'],
+                    'description': nlbaas_pool_data['description'],
+                    'protocol': nlbaas_pool_data['protocol'],
+                    'lb_algorithm': nlbaas_pool_data['lb_algorithm'],
+                    'healthmonitor':
+                        self._build_healthmonitor_obj(pool_id) or '',
+                    'members': self._build_members_list(pool_id) or ''
+                 }
+                octavia_lb_pools.append(octavia_pool)
         return octavia_lb_pools
 
     def build_octavia_lb_tree(self, reuse_vip):
@@ -326,6 +333,7 @@ class LbMigrator(object):
 
     def octavia_load_balancer_create(self, reuse_vip):
         octavia_lb_tree = self.build_octavia_lb_tree(reuse_vip)
+        import pdb ; pdb.set_trace()
         self.os_clients.octaviaclient.load_balancer_create(
             json=octavia_lb_tree)
 
