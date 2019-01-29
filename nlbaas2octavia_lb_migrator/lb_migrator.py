@@ -304,7 +304,6 @@ class LbMigrator(object):
             octavia_lb_pools.append(octavia_pool)
         return octavia_lb_pools
 
-
     def build_octavia_lb_tree(self, reuse_vip):
         nlbaas_lb_details = self.lb_details['loadbalancer']
 
