@@ -6,6 +6,7 @@ from keystoneclient.v3 import client as keystoneclient
 from neutronclient.v2_0 import client as neutronclient
 from octaviaclient.api.v2 import octavia as octaviaclient
 
+from pprint import pprint
 
 OS_PROJECT_NAME = environ.get('OS_PROJECT_NAME')
 OS_USERNAME = environ.get('OS_USERNAME')
@@ -97,26 +98,14 @@ class OpenStackClients(object):
                  user_domain_name=None):
 
         # Handle user-feed data vs environment variables.
-        if not project_name:
-            project_name = OS_PROJECT_NAME
-        if not username:
-            username = OS_USERNAME
-        if not password:
-            password = OS_PASSWORD
-        if not auth_url:
-            auth_url = OS_AUTH_URL
-        if not project_domain_name:
-            project_domain_name = OS_PROJECT_DOMAIN_NAME
-        if not user_domain_name:
-            user_domain_name = OS_USER_DOMAIN_NAME
-
         self.keystone_credentials = {
-            'username': username,
-            'password': password,
-            'project_name': project_name,
-            'auth_url': auth_url,
-            'project_domain_name': project_domain_name,
-            'user_domain_name': user_domain_name
+            'username': username or OS_USERNAME,
+            'password': password or OS_PASSWORD,
+            'project_name': project_name or OS_PROJECT_NAME,
+            'auth_url': auth_url or OS_AUTH_URL,
+            'project_domain_name':
+                project_domain_name or OS_PROJECT_DOMAIN_NAME,
+            'user_domain_name': user_domain_name or OS_USER_DOMAIN_NAME
         }
         self._keystone_session = self.get_keystone_session()
         self.octaviaclient = self.get_octaviaclient()
@@ -333,7 +322,7 @@ class LbMigrator(object):
 
     def octavia_load_balancer_create(self, reuse_vip):
         octavia_lb_tree = self.build_octavia_lb_tree(reuse_vip)
-        import pdb ; pdb.set_trace()
+        pprint(octavia_lb_tree)
         self.os_clients.octaviaclient.load_balancer_create(
             json=octavia_lb_tree)
 
