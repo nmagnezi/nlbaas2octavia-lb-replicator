@@ -12,8 +12,8 @@ OS_PROJECT_NAME = environ.get('OS_PROJECT_NAME')
 OS_USERNAME = environ.get('OS_USERNAME')
 OS_PASSWORD = environ.get('OS_PASSWORD')
 OS_AUTH_URL = environ.get('OS_AUTH_URL')
-OS_PROJECT_DOMAIN_NAME = environ.get('OS_PROJECT_DOMAIN_NAME') or 'Default'
-OS_USER_DOMAIN_NAME = environ.get('OS_USER_DOMAIN_NAME') or 'Default'
+OS_PROJECT_DOMAIN_NAME = environ.get('OS_PROJECT_DOMAIN_NAME', 'Default')
+OS_USER_DOMAIN_NAME = environ.get('OS_USER_DOMAIN_NAME', 'Default')
 
 
 def process_args():
@@ -93,19 +93,19 @@ def _remove_empty(lb_dict):
 
 class OpenStackClients(object):
 
-    def __init__(self, project_name=None, username=None, password=None,
-                 auth_url=None, project_domain_name=None,
-                 user_domain_name=None):
+    def __init__(self, project_name=OS_PROJECT_NAME, username=OS_USERNAME,
+                 password=OS_PASSWORD, auth_url=OS_AUTH_URL,
+                 project_domain_name=OS_PROJECT_DOMAIN_NAME,
+                 user_domain_name=OS_USER_DOMAIN_NAME):
 
         # Handle user-feed data vs environment variables.
         self.keystone_credentials = {
-            'username': username or OS_USERNAME,
-            'password': password or OS_PASSWORD,
-            'project_name': project_name or OS_PROJECT_NAME,
-            'auth_url': auth_url or OS_AUTH_URL,
-            'project_domain_name':
-                project_domain_name or OS_PROJECT_DOMAIN_NAME,
-            'user_domain_name': user_domain_name or OS_USER_DOMAIN_NAME
+            'username': username,
+            'password': password,
+            'project_name': project_name,
+            'auth_url': auth_url,
+            'project_domain_name':  project_domain_name,
+            'user_domain_name': user_domain_name
         }
         self._keystone_session = self.get_keystone_session()
         self.octaviaclient = self.get_octaviaclient()
