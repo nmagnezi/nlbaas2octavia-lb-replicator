@@ -2,10 +2,11 @@ import argparse
 import json
 from os import environ
 
+from keystoneauth1 import loading
+from keystoneauth1 import session
 from keystoneclient.v3 import client as keystoneclient
 from neutronclient.v2_0 import client as neutronclient
 from octaviaclient.api.v2 import octavia as octaviaclient
-
 from pprint import pprint
 
 OS_PROJECT_NAME = environ.get('OS_PROJECT_NAME')
@@ -25,26 +26,26 @@ def process_args():
         '-l', '--lb_id',
         required=True,
         help='Load balancer ID. '
-             'When no --to/from file specified, will create it in Octavia.'
+             'When no --to/from a file specified, will create it in Octavia.'
     )
     parser.add_argument(
         '-v', '--reuse_vip',
         default=False,
         action='store_true',
-        help='When specified, use the same Load balancer VIP address. Should'
+        help='When specified, use the same Load balancer VIP address. Should '
              'only be used when the source load balancer is already gone.'
     )
     file_options = parser.add_mutually_exclusive_group()
     file_options.add_argument(
         '--to_file',
         action='store_true',
-        help="Save load balancer details to local file. "
+        help="Save load balancer details to a local file. "
              "Does not create it in Octavia."
     )
     file_options.add_argument(
         '--from_file',
         action='store_true',
-        help="Read load balancer details from local file. "
+        help="Read load balancer details from a local file. "
              "Create in Octavia."
     )
     parser.add_argument(
@@ -112,8 +113,6 @@ class OpenStackClients(object):
         self.neutronclient = self.get_neutronclient()
 
     def get_keystone_session(self):
-        from keystoneauth1 import loading
-        from keystoneauth1 import session
         loader = loading.get_plugin_loader('password')
         auth = loader.load_from_options(**self.keystone_credentials)
         return session.Session(auth=auth, verify=False)
