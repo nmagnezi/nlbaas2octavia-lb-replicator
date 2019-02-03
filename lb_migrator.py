@@ -133,67 +133,67 @@ class LbMigrator(object):
 
     def __init__(self, lb_id):
         self.os_clients = OpenStackClients()
-        self.lb_id = lb_id
-        self.lb_tree = {}
-        self.lb_details = {}
-        self.lb_listeners = {}
-        self.lb_pools = {}
-        self.lb_def_pool_id = ''
-        self.lb_healthmonitors = {}
-        self.lb_members = {}
+        self._lb_id = lb_id
+        self._lb_tree = {}
+        self._lb_details = {}
+        self._lb_listeners = {}
+        self._lb_pools = {}
+        self._lb_def_pool_id = ''
+        self._lb_healthmonitors = {}
+        self._lb_members = {}
 
     def _pools_deep_scan(self, pools_list):
         for pool in pools_list:
             pool_id = pool['id']
             lb_pool = self.os_clients.neutronclient.show_lbaas_pool(pool_id)
-            self.lb_pools[pool_id] = lb_pool
+            self._lb_pools[pool_id] = lb_pool
             if pool.get('healthmonitor'):
                 # Health monitor is optional
                 healthmonitor_id = pool['healthmonitor']['id']
                 lb_healthmonitor = (
-                    self.os_clients.neutronclient.
-                    show_health_monitor(healthmonitor_id)
+                    self.os_clients.neutronclient
+                    .show_health_monitor(healthmonitor_id)
                 )
-                self.lb_healthmonitors[healthmonitor_id] = lb_healthmonitor
+                self._lb_healthmonitors[healthmonitor_id] = lb_healthmonitor
             for member in pool['members']:
                 member_id = member['id']
                 lb_member = (
-                    self.os_clients.neutronclient.
-                    show_lbaas_member(member_id, pool_id)
+                    self.os_clients.neutronclient
+                    .show_lbaas_member(member_id, pool_id)
                 )
-                self.lb_members[member_id] = lb_member
+                self._lb_members[member_id] = lb_member
 
     def collect_lb_info_from_api(self):
-        self.lb_tree = (
+        self._lb_tree = (
             self.os_clients.neutronclient.retrieve_loadbalancer_status(
-                loadbalancer=self.lb_id)
+                loadbalancer=self._lb_id)
         )
-        self.lb_details = self.os_clients.neutronclient.show_loadbalancer(
-            self.lb_id)
+        self._lb_details = self.os_clients.neutronclient.show_loadbalancer(
+            self._lb_id)
 
         # Scan lb_tree and retrive all objects to backup all the info
         # that tree is missing out. The Octavia lb tree contain more details.
         for listener in (
-                self.lb_tree['statuses']['loadbalancer']['listeners']):
+                self._lb_tree['statuses']['loadbalancer']['listeners']):
             listener_id = listener['id']
             lb_listener = (
                 self.os_clients.neutronclient.show_listener(listener_id)
                            )
-            self.lb_listeners[listener_id] = lb_listener
+            self._lb_listeners[listener_id] = lb_listener
             self._pools_deep_scan(listener['pools'])
 
         self._pools_deep_scan(
-            self.lb_tree['statuses']['loadbalancer']['pools'])
+            self._lb_tree['statuses']['loadbalancer']['pools'])
 
     def write_lb_data_file(self, filename):
         lb_data = {
-            'lb_id': self.lb_id,
-            'lb_tree': self.lb_tree,
-            'lb_details': self.lb_details,
-            'lb_listeners': self.lb_listeners,
-            'lb_pools': self.lb_pools,
-            'lb_healthmonitors': self.lb_healthmonitors,
-            'lb_members': self.lb_members
+            'lb_id': self._lb_id,
+            'lb_tree': self._lb_tree,
+            'lb_details': self._lb_details,
+            'lb_listeners': self._lb_listeners,
+            'lb_pools': self._lb_pools,
+            'lb_healthmonitors': self._lb_healthmonitors,
+            'lb_members': self._lb_members
         }
         with open(filename, 'w') as f:
             json.dump(lb_data, f, sort_keys=True, indent=4)
@@ -203,23 +203,23 @@ class LbMigrator(object):
         with open(filename) as f:
             lb_data = json.load(f)
         try:
-            if self.lb_id == lb_data['lb_id']:
-                self.lb_tree = lb_data['lb_tree']
-                self.lb_details = lb_data['lb_details']
-                self.lb_listeners = lb_data['lb_listeners']
-                self.lb_pools = lb_data['lb_pools']
-                self.lb_healthmonitors = lb_data['lb_healthmonitors']
-                self.lb_members = lb_data['lb_members']
+            if self._lb_id == lb_data['lb_id']:
+                self._lb_tree = lb_data['lb_tree']
+                self._lb_details = lb_data['lb_details']
+                self._lb_listeners = lb_data['lb_listeners']
+                self._lb_pools = lb_data['lb_pools']
+                self._lb_healthmonitors = lb_data['lb_healthmonitors']
+                self._lb_members = lb_data['lb_members']
         except ValueError:
             print('The file content does not match the lb_id you specified')
 
     def _build_healthmonitor_obj(self, pool_id):
-        nlbaas_pool_data = self.lb_pools[pool_id]['pool']
+        nlbaas_pool_data = self._lb_pools[pool_id]['pool']
         octavia_hm = None
 
         if nlbaas_pool_data.get('healthmonitor_id'):
             healthmonitor_id = nlbaas_pool_data['healthmonitor_id']
-            healthmonitor_data = self.lb_healthmonitors[healthmonitor_id]
+            healthmonitor_data = self._lb_healthmonitors[healthmonitor_id]
             octavia_hm = {
                 'type': healthmonitor_data.get('type'),
                 'delay': healthmonitor_data.get('delay'),
@@ -232,12 +232,12 @@ class LbMigrator(object):
         return octavia_hm
 
     def _build_members_list(self, pool_id):
-        nlbaas_pool_data = self.lb_pools[pool_id]['pool']
+        nlbaas_pool_data = self._lb_pools[pool_id]['pool']
         octavia_lb_members = []
 
         for member in nlbaas_pool_data['members']:
             member_id = member['id']
-            member_data = self.lb_members[member_id]['member']
+            member_data = self._lb_members[member_id]['member']
             octavia_member = {
                 'admin_state_up': member_data['admin_state_up'],
                 'name': member_data['name'],
@@ -250,14 +250,15 @@ class LbMigrator(object):
         return octavia_lb_members
 
     def _build_listeners_list(self):
-        nlbaas_lb_tree = self.lb_tree['statuses']['loadbalancer']
+        nlbaas_lb_tree = self._lb_tree['statuses']['loadbalancer']
         octavia_lb_listeners = []
         for listener in nlbaas_lb_tree['listeners']:
             listener_id = listener['id']
-            nlbaas_listener_data = self.lb_listeners[listener_id]['listener']
+            nlbaas_listener_data = self._lb_listeners[listener_id]['listener']
 
-            self.lb_def_pool_id = nlbaas_listener_data['default_pool_id']
-            nlbaas_default_pool_data = self.lb_pools[self.lb_def_pool_id]['pool']
+            self._lb_def_pool_id = nlbaas_listener_data['default_pool_id']
+            nlbaas_default_pool_data = \
+                self._lb_pools[self._lb_def_pool_id]['pool']
 
             octavia_listener = {
                 'name': nlbaas_listener_data['name'],
@@ -269,23 +270,23 @@ class LbMigrator(object):
                     'lb_algorithm': nlbaas_default_pool_data['lb_algorithm'],
                     'healthmonitor':
                         self._build_healthmonitor_obj(
-                            self.lb_def_pool_id) or '',
+                            self._lb_def_pool_id) or '',
                     'members': self._build_members_list(
-                        self.lb_def_pool_id) or ''
+                        self._lb_def_pool_id) or ''
                 }
             }
             octavia_lb_listeners.append(octavia_listener)
         return octavia_lb_listeners
 
     def _build_pools_list(self):
-        nlbaas_lb_tree = self.lb_tree['statuses']['loadbalancer']
+        nlbaas_lb_tree = self._lb_tree['statuses']['loadbalancer']
         octavia_lb_pools = []
         for pool in nlbaas_lb_tree['pools']:
             pool_id = pool['id']
-            if pool_id == self.lb_def_pool_id:
+            if pool_id == self._lb_def_pool_id:
                 continue
             else:
-                nlbaas_pool_data = self.lb_pools[pool_id]['pool']
+                nlbaas_pool_data = self._lb_pools[pool_id]['pool']
 
                 octavia_pool = {
                     'name': nlbaas_pool_data['name'],
@@ -300,7 +301,7 @@ class LbMigrator(object):
         return octavia_lb_pools
 
     def build_octavia_lb_tree(self, reuse_vip):
-        nlbaas_lb_details = self.lb_details['loadbalancer']
+        nlbaas_lb_details = self._lb_details['loadbalancer']
 
         octavia_lb_tree = {
             'loadbalancer': {
