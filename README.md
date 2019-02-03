@@ -1,10 +1,10 @@
 # nlbaas2octavia-lb-migrator
 
-##The problem
+## The problem
 OpenStack does not** currently provide users with a migration path from Neutron-LBaaS to  Octavia.
 Such migration should take into account: data plane downtime, VIP migration, rollback options and more.
 
-** it does provide a tool for cloud admins, see [Alternatives](##Alternatives).
+** it does provide a tool for cloud admins, see [Alternatives](#alternatives).
 
 ## The migration tool
 nlbaas2octavia-lb-migrator is a script to allow users to capture everything about their Neutron LBaaS based load balancers, and eventually, create the very same load balancer (with all of its sub-objects) in Octavia.
