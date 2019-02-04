@@ -79,10 +79,3 @@ Read load balancer information from a Neutron API and immediately create it in O
 A database migration script that you may find [here](https://github.com/openstack/neutron-lbaas/tree/master/tools/nlbaas2octavia).
 Note that only cloud operators will be able to invoke such script.
 
-
-Notes:
-does not delete or modify existing resoucres
-at the end of migration users will need to delete the resources.
-move floating ip.
-in case something fails the script will not role back.
-
