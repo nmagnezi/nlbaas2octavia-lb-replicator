@@ -20,7 +20,8 @@ OS_USER_DOMAIN_NAME = environ.get('OS_USER_DOMAIN_NAME', 'Default')
 def process_args():
 
     parser = argparse.ArgumentParser(
-        description='Migrate a Neutron-LBaaS Load Balancer to Octavia via API'
+        description='Replicate a Neutron-LBaaS Load Balancer to Octavia via '
+                    'API'
     )
     parser.add_argument(
         '-l', '--lb_id',
@@ -129,7 +130,7 @@ class OpenStackClients(object):
         return neutronclient.Client(session=self._keystone_session)
 
 
-class LbMigrator(object):
+class LbReplicator(object):
 
     def __init__(self, lb_id):
         self.os_clients = OpenStackClients()
@@ -331,26 +332,26 @@ def main():
 
     args = process_args()
     lb_data_filename = ''.join([args.lb_id, '_data', '.json'])
-    lb_migrator = LbMigrator(args.lb_id)
+    lb_replicator = LbReplicator(args.lb_id)
 
     # Collect all the data about the Neutron-LBaaS based load balancer.
 
     if args.from_file:
-        lb_migrator.read_lb_data_file(lb_data_filename)
+        lb_replicator.read_lb_data_file(lb_data_filename)
     else:
         # Get load balancer from OpenStack Neutron API.
-        lb_migrator.collect_lb_info_from_api()
+        lb_replicator.collect_lb_info_from_api()
 
     # Either backup all the data about the Neutron-LBaaS based load balancer to
     # to a file or directly create it in Octavia.
 
     if args.to_file:
         # Backup to a JSON file.
-        lb_migrator.write_lb_data_file(lb_data_filename)
+        lb_replicator.write_lb_data_file(lb_data_filename)
 
     else:
         # Build an Octavia load balancer tree and create it.
-        lb_migrator.octavia_load_balancer_create(args.reuse_vip)
+        lb_replicator.octavia_load_balancer_create(args.reuse_vip)
 
 
 if __name__ == '__main__':
