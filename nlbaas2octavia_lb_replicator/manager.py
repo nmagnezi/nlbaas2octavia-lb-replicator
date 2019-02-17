@@ -1,4 +1,3 @@
-import argparse
 import json
 from os import environ
 
@@ -15,65 +14,6 @@ OS_PASSWORD = environ.get('OS_PASSWORD')
 OS_AUTH_URL = environ.get('OS_AUTH_URL')
 OS_PROJECT_DOMAIN_NAME = environ.get('OS_PROJECT_DOMAIN_NAME', 'Default')
 OS_USER_DOMAIN_NAME = environ.get('OS_USER_DOMAIN_NAME', 'Default')
-
-
-def process_args():
-
-    parser = argparse.ArgumentParser(
-        description='Replicate a Neutron-LBaaS Load Balancer to Octavia via '
-                    'API'
-    )
-    parser.add_argument(
-        '-l', '--lb_id',
-        required=True,
-        help='Load balancer ID. '
-             'When no --to/from a file specified, will create it in Octavia.'
-    )
-    parser.add_argument(
-        '-v', '--reuse_vip',
-        default=False,
-        action='store_true',
-        help='When specified, use the same Load balancer VIP address. Should '
-             'only be used when the source load balancer is already gone.'
-    )
-    file_options = parser.add_mutually_exclusive_group()
-    file_options.add_argument(
-        '--to_file',
-        action='store_true',
-        help="Save load balancer details to a local file. "
-             "Does not create it in Octavia."
-    )
-    file_options.add_argument(
-        '--from_file',
-        action='store_true',
-        help="Read load balancer details from a local file. "
-             "Create in Octavia."
-    )
-    parser.add_argument(
-        '-p', '--project_name',
-        required=False if OS_PROJECT_NAME else True,
-        help='Project ID or name. When not specified, '
-             'will read it from environment variable: OS_PROJECT_NAME.'
-    )
-    parser.add_argument(
-        '-u', '--username',
-        required=False if OS_USERNAME else True,
-        help='Username ID or name. When not specified, '
-             'will read it from environment variable: OS_USERNAME.'
-    )
-    parser.add_argument(
-        '-pa', '--password',
-        required=False if OS_PASSWORD else True,
-        help='Password ID or name. When not specified, '
-             'will read it from environment variable: OS_PASSWORD.'
-    )
-    parser.add_argument(
-        '-a', '--auth_url',
-        required=False if OS_AUTH_URL else True,
-        help='Auth URL. When not specified, '
-             'will read it from environment variable: OS_AUTH_URL.'
-    )
-    return parser.parse_args()
 
 
 def _remove_empty(lb_dict):
@@ -326,33 +266,3 @@ class LbReplicator(object):
         pprint(octavia_lb_tree)
         self.os_clients.octaviaclient.load_balancer_create(
             json=octavia_lb_tree)
-
-
-def main():
-
-    args = process_args()
-    lb_data_filename = ''.join([args.lb_id, '_data', '.json'])
-    lb_replicator = LbReplicator(args.lb_id)
-
-    # Collect all the data about the Neutron-LBaaS based load balancer.
-
-    if args.from_file:
-        lb_replicator.read_lb_data_file(lb_data_filename)
-    else:
-        # Get load balancer from OpenStack Neutron API.
-        lb_replicator.collect_lb_info_from_api()
-
-    # Either backup all the data about the Neutron-LBaaS based load balancer to
-    # to a file or directly create it in Octavia.
-
-    if args.to_file:
-        # Backup to a JSON file.
-        lb_replicator.write_lb_data_file(lb_data_filename)
-
-    else:
-        # Build an Octavia load balancer tree and create it.
-        lb_replicator.octavia_load_balancer_create(args.reuse_vip)
-
-
-if __name__ == '__main__':
-    main()
