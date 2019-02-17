@@ -21,7 +21,7 @@ def main():
 
     args = parser.process_args()
     lb_data_filename = ''.join([args.lb_id, '_data', '.json'])
-    lb_replicator = manager.LbReplicator(args.lb_id)
+    lb_replicator = manager.Manager(args.lb_id)
 
     # Collect all the data about the Neutron-LBaaS based load balancer.
 

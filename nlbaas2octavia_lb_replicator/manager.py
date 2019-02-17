@@ -1,79 +1,28 @@
+# Copyright 2019 Nir Magnezi
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
 import json
-from os import environ
 
-from keystoneauth1 import loading
-from keystoneauth1 import session
-from keystoneclient.v3 import client as keystoneclient
-from neutronclient.v2_0 import client as neutronclient
-from octaviaclient.api.v2 import octavia as octaviaclient
 from pprint import pprint
 
-OS_PROJECT_NAME = environ.get('OS_PROJECT_NAME')
-OS_USERNAME = environ.get('OS_USERNAME')
-OS_PASSWORD = environ.get('OS_PASSWORD')
-OS_AUTH_URL = environ.get('OS_AUTH_URL')
-OS_PROJECT_DOMAIN_NAME = environ.get('OS_PROJECT_DOMAIN_NAME', 'Default')
-OS_USER_DOMAIN_NAME = environ.get('OS_USER_DOMAIN_NAME', 'Default')
+from nlbaas2octavia_lb_replicator.common import os_clients
+from nlbaas2octavia_lb_replicator.common import utils
 
 
-def _remove_empty(lb_dict):
-    """
-    Removes keys from dictionary and sub objs such as dictionaries and list of
-    dictionaries, if they value is an empty string.
-    :param lb_dict: dict
-    """
-    for key, val in lb_dict.items():
-        if isinstance(val, dict):
-            _remove_empty(val)
-        if isinstance(val, list):
-            for x in val:
-                if isinstance(x, dict):
-                    _remove_empty(x)
-        if val in ['', u'']:
-            lb_dict.pop(key)
-
-
-class OpenStackClients(object):
-
-    def __init__(self, project_name=OS_PROJECT_NAME, username=OS_USERNAME,
-                 password=OS_PASSWORD, auth_url=OS_AUTH_URL,
-                 project_domain_name=OS_PROJECT_DOMAIN_NAME,
-                 user_domain_name=OS_USER_DOMAIN_NAME):
-
-        # Handle user-feed data vs environment variables.
-        self.keystone_credentials = {
-            'username': username,
-            'password': password,
-            'project_name': project_name,
-            'auth_url': auth_url,
-            'project_domain_name':  project_domain_name,
-            'user_domain_name': user_domain_name
-        }
-        self._keystone_session = self.get_keystone_session()
-        self.octaviaclient = self.get_octaviaclient()
-        self.neutronclient = self.get_neutronclient()
-
-    def get_keystone_session(self):
-        loader = loading.get_plugin_loader('password')
-        auth = loader.load_from_options(**self.keystone_credentials)
-        return session.Session(auth=auth, verify=False)
-
-    def get_octaviaclient(self):
-        keystone = keystoneclient.Client(session=self._keystone_session)
-        service_id = keystone.services.list(name='octavia')[0].id
-        octavia_endpoint = keystone.endpoints.list(service=service_id,
-                                                   interface='public')[0].url
-        return octaviaclient.OctaviaAPI(session=self._keystone_session,
-                                        endpoint=octavia_endpoint)
-
-    def get_neutronclient(self):
-        return neutronclient.Client(session=self._keystone_session)
-
-
-class LbReplicator(object):
+class Manager(object):
 
     def __init__(self, lb_id):
-        self.os_clients = OpenStackClients()
+        self.os_clients = os_clients.OpenStackClients()
         self._lb_id = lb_id
         self._lb_tree = {}
         self._lb_details = {}
@@ -258,7 +207,7 @@ class LbReplicator(object):
                 if reuse_vip else ''
             }
         }
-        _remove_empty(octavia_lb_tree)
+        utils._remove_empty(octavia_lb_tree)
         return octavia_lb_tree
 
     def octavia_load_balancer_create(self, reuse_vip):
