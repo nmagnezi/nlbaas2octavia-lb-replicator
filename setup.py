@@ -11,22 +11,8 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+from setuptools import setup
 
-
-def _remove_empty(lb_dict):
-    """Recursively Removes blank str values from the dictionary"
-
-    Removes keys from dictionary and sub objs such as dictionaries and
-    list of dictionaries, if the value is an empty string.
-
-    :param lb_dict: dict
-    """
-    for key, val in lb_dict.items():
-        if isinstance(val, dict):
-            _remove_empty(val)
-        if isinstance(val, list):
-            for x in val:
-                if isinstance(x, dict):
-                    _remove_empty(x)
-        if val in ['', u'']:
-            lb_dict.pop(key)
+setup(
+    setup_requires=['pbr'],
+    pbr=True)

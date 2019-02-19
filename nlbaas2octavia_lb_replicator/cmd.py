@@ -13,8 +13,8 @@
 #    under the License.
 import sys
 
-from nlbaas2octavia_lb_replicator import parser
 from nlbaas2octavia_lb_replicator import manager
+from nlbaas2octavia_lb_replicator import parser
 
 
 def main():
