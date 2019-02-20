@@ -42,13 +42,13 @@ The script will either:
 
 ## Usage example
 Backup a load balancer to a JSON file
-> `$ python lb_replicator.py --l 3badc500-b24a-425a-88c6-c32a5f790ae4 --to_file`
+> `$ lb-replicator -l <LB_ID> --to_file`
 
 Read load balancer information from a JSON file and create it in Octavia
-> `$ python lb_replicator.py --l 3badc500-b24a-425a-88c6-c32a5f790ae4 --from_file --reuse_vip`
+> `$ lb-replicator -l <LB_ID> --from_file --reuse_vip`
 
 Read load balancer information from a Neutron API and immediately create it in Octavia
-> `$ python nlbaas2octavia-lb-replicator/lb_replicator.py --l 3badc500-b24a-425a-88c6-c32a5f790ae4`
+> `$ lb-replicator -l <LB_ID>`
 
 ## Options
       -h, --help            show this help message and exit
