@@ -76,6 +76,6 @@ Read load balancer information from a Neutron API and immediately create it in O
                             environment variable: OS_AUTH_URL.`
 
 ## Alternatives
-A database migration script that you may find [here](https://github.com/openstack/neutron-lbaas/tree/master/tools/nlbaas2octavia).
+A database migration script that you may find [here](https://github.com/openstack/neutron-lbaas/tree/stable/stein/tools/nlbaas2octavia).
 Note that only cloud operators will be able to invoke such script.
 
